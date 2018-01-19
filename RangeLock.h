@@ -12,29 +12,30 @@ class RangeLock
 {
 public:
 	template <typename T2>
-	class Range
+	class Lock
 	{
 		friend class RangeLock<T2>;
 	public:
-		Range(const T2 &start, const T2 &end)
+		Lock(const T2 &start, const T2 &end)
 		{
 			start_ = start;
 			end_ = end;
 		}
-		virtual ~Range() {}
+		virtual ~Lock() {}
 	private:
 		T2 start_;
 		T2 end_;
 		std::condition_variable cv_;
-		
+
 	public:
-		bool overlap(const Range &r)
+		/** @brief this lock blocks the parameter lock */
+		bool block(const Lock &lock)
 		{
-			if (r.end_ < start_ || end_ < r.start_) return false;
+			if (lock.end_ < start_ || end_ < lock.start_) return false;
 			else return true;
 		}
 	};
-		
+
 public:
 	RangeLock() {}
 	virtual ~RangeLock() {}
@@ -42,30 +43,49 @@ public:
 	RangeLock(const & RangeLock) = delete;
 	RangeLock & operator = (const RangeLock &) = delete;
 
-	typedef std::shared_ptr<Range<T>> RangeHandler;
+	typedef std::shared_ptr<Lock<T>> LockHandler;
 private:
 	std::mutex m_;
-	std::queue<RangeHandler> lockedq_;
-	std::queue<RangeHandler> waitingq_;
+	std::queue<LockHandler> lockedq_;
+	std::queue<LockHandler> waitingq_;
 
 public:
-	RangeHandler lock(const T &start, const T &end)
+	LockHandler lock(const T &start, const T &end)
 	{
-		RangeHandler range(new Range<T>(start, end));
+		LockHandler handler(new Lock<T>(start, end));
 		
 		std::lock_guard<std::mutex> guard(m_);
-		waitingq_.push(range);
+		waitingq_.push(handler);
 
 		while (true) {
-			// check all locked ranges
-
-			// check all waiting ranges ahead
-
+			restart:
+			// check all locks
+			for (auto r : lockedq_) {
+				if (r->block(*handler)) {
+					handler->cv_.wait(guard);
+					goto restart;
+				}
+			}
+			// check all waiting locks before current one
+			for (auto r : waitingq_) {
+				if (r == handler) {
+					lockedq_.push(handler);
+					waitingq_.erase(handler);		//???
+					return handler;
+				}
+				else if (r->block(*handler)) {
+					handler->cv_.wait(guard);
+					goto restart;
+				}
+			}
 		}
 	}
-	
-	void unlock(RangeHandler range_id);
 
+	void unlock(LockHandler handler)
+	{
+		lockedq_.erease(handler);
+		handler->cv_.notify_all();
+	}
 };
 
 #endif
