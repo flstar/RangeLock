@@ -17,7 +17,7 @@ TEST(RangeLock, SimpleLockBlocked)
 {
 	RangeLock<int> locker;
 	int step = 0;
-	
+
 	auto f = async([&locker, &step]() {
 		step = 1;		// 1
 		cout<<"1:lock [0, 1]"<<endl;
