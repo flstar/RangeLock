@@ -2,10 +2,8 @@
 #define __RANGE_LOCK_H__
 
 #include <memory>
-#include <unordered_map>
 #include <queue>
 #include <mutex>
-
 
 template <typename T>
 class RangeLock
@@ -62,6 +60,7 @@ public:
 			// check all locks
 			for (auto iter = lockedq_.begin(); iter != lockedq_.end(); iter++) {
 				if ((*iter)->block(*handler)) {
+					std::cout<<"Waiting on locked range: ["<<(*iter)->start_<<","<<(*iter)->end_<<"]"<<std::endl;
 					(*iter)->cv_.wait(guard);
 					goto restart;
 				}
@@ -74,6 +73,7 @@ public:
 					return handler;
 				}
 				else if ((*iter)->block(*handler)) {
+					std::cout<<"Waiting on waiting range: ["<<(*iter)->start_<<","<<(*iter)->end_<<"]"<<std::endl;
 					(*iter)->cv_.wait(guard);
 					goto restart;
 				}
