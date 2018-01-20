@@ -1,14 +1,15 @@
 .PHONY: default test
 
+TARGET = TestRangeLock
 LIBS = -L/usr/local/lib -lgtest
 
-default: TestRangeLock
+default: $(TARGET)
 
-TestRangeLock: TestRangeLock.cxx RangeLock.h
-	$(CXX) -o $@ $< $(LIBS)
+$(TARGET): TestRangeLock.cxx RangeLock.h
+	$(CXX) -g -o $@ $< $(LIBS)
 
 test: TestRangeLock
-	./TestChannel
+	./$(TARGET)
 
 clean:
-	rm -f TestRangeLock
+	rm -f $(TARGET)
