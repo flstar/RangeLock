@@ -20,26 +20,18 @@ TEST(RangeLock, SimpleLockBlocked)
 
 	auto f = async([&locker, &step]() {
 		step = 1;		// 1
-		cout<<"1:lock [0, 1]"<<endl;
 		auto handler = locker.lock(0, 1);
-		cout<<"1:get lock [0, 1]"<<endl;
 		sleep(2);
 		step = 3;		// 3
-		cout<<"1:unlock [0, 1]"<<endl;
 		locker.unlock(handler);
-		cout<<"1:[0, 1] unlocked"<<endl;
 	});
 
 	sleep(1);
 	EXPECT_EQ(1, step);
 	step= 2;		// 2
-	cout<<"2:lock [1, 3]"<<endl;
 	auto h2 = locker.lock(1, 3);
-	cout<<"2:get lock [1, 3]"<<endl;
 	EXPECT_EQ(3, step);
-	cout<<"2:unlock [1, 3]"<<endl;
 	locker.unlock(h2);
-	cout<<"2:[1, 3] unlocked"<<endl;
 
 	f.get();
 }
@@ -51,75 +43,180 @@ TEST(RangeLock, SimpleLockPass)
 	
 	auto f = async([&locker, &step]() {
 		step = 1;		// 1
-		cout<<"1:lock [1, 10]"<<endl;
 		auto handler = locker.lock(1, 10);
-		cout<<"1:get lock [1, 10]"<<endl;
 		sleep(2);
 		step = 3;		// 3
-		cout<<"1:unlock [1, 10]"<<endl;
 		locker.unlock(handler);
-		cout<<"1:[1, 10] unlocked"<<endl;
 	});
 
 	sleep(1);
 	EXPECT_EQ(1, step);
 	step= 2;		// 2
-	cout<<"2:lock [20, 30]"<<endl;
 	auto h2 = locker.lock(20, 30);
-	cout<<"2:get lock [20, 30]"<<endl;
 	EXPECT_EQ(2, step);
-	cout<<"2:unlock [20, 30]"<<endl;
 	locker.unlock(h2);
-	cout<<"2:[20, 30] unlocked"<<endl;
 
 	f.get();
 }
 
-TEST(RangeLock, SimpleLockBlockedByPrevious)
+TEST(RangeLock, BlockedByPreviousWaiting)
 {
 	RangeLock<int> locker;
 	int step = 0;
 
 	auto f1 = async([&locker, &step]() {
 		step = 1;		// 1
-		cout<<"1:lock [0, 10]"<<endl;
 		auto handler = locker.lock(0, 10);
-		cout<<"1:get lock [0, 10]"<<endl;
 		sleep(3);
 		step = 4;		// 4
-		cout<<"1:unlock [1, 10]"<<endl;
 		locker.unlock(handler);
-		cout<<"1:[1, 10] unlocked"<<endl;
 	});
 
 	auto f2 = async([&locker, &step]() {
 		sleep(1);
 		step = 2;		// 2
-		cout<<"2:lock [10, 20]"<<endl;
 		auto handler = locker.lock(10, 20);
-		cout<<"2:get lock [10, 20]"<<endl;
 		EXPECT_EQ(4, step);
 
 		sleep(3);
 		step = 5;		// 5
-		cout<<"2:unlock [10, 200]"<<endl;
 		locker.unlock(handler);
-		cout<<"2:[10, 20] unlocked"<<endl;
 	});
 
 	sleep(2);
 	EXPECT_EQ(2, step);
 	step= 3;		// 3
-	cout<<"3:lock [30, 40]"<<endl;
 	auto h2 = locker.lock(20, 30);
-	cout<<"3:get lock [30, 40]"<<endl;
 	EXPECT_EQ(5, step);
 
-	cout<<"3:unlock [30, 40]"<<endl;
 	locker.unlock(h2);
-	cout<<"3:[30, 40] unlocked"<<endl;
 }
 
+TEST(RangeLock, ReadRead)
+{
+	RangeLock<int> locker;
+	int step = 0;
+
+	auto f = async([&locker, &step]() {
+		step = 1;
+		auto h = locker.lock(0, 10, false);
+		sleep(2);
+		step = 2;
+		locker.unlock(h);
+	});
+
+	sleep(1);
+	auto h2 = locker.lock(1, 10, false);
+	// If above line is blocked by previous lock, step will be 1. Or it is 2
+	EXPECT_EQ(1, step);
+	locker.unlock(h2);
+
+	f.get();
+}
+
+TEST(RangeLock, ReadWrite)
+{
+	RangeLock<int> locker;
+	int step = 0;
+
+	auto f = async([&locker, &step]() {
+		step = 1;
+		auto h = locker.lock(0, 10, false);
+		sleep(2);
+		step = 2;
+		locker.unlock(h);
+	});
+
+	sleep(1);
+	auto h2 = locker.lock(1, 10);
+	// If above line is blocked by previous lock, step will be 1. Or it is 2
+	EXPECT_EQ(2, step);
+	locker.unlock(h2);
+
+	f.get();
+}
+
+TEST(RangeLock, WriteRead)
+{
+	RangeLock<int> locker;
+	int step = 0;
+
+	auto f = async([&locker, &step]() {
+		step = 1;
+		auto h = locker.lock(0, 10);
+		sleep(2);
+		step = 2;
+		locker.unlock(h);
+	});
+
+	sleep(1);
+	auto h2 = locker.lock(1, 10, false);
+	// If above line is blocked by previous lock, step will be 1. Or it is 2
+	EXPECT_EQ(2, step);
+	locker.unlock(h2);
+
+	f.get();
+}
+
+TEST(RangeLock, WriteWrite)
+{
+	RangeLock<int> locker;
+	int step = 0;
+
+	auto f = async([&locker, &step]() {
+		step = 1;
+		auto h = locker.lock(0, 10);
+		sleep(2);
+		step = 2;
+		locker.unlock(h);
+	});
+
+	sleep(1);
+	auto h2 = locker.lock(1, 10);
+	// If above line is blocked by previous lock, step will be 1. Or it is 2
+	EXPECT_EQ(2, step);
+	locker.unlock(h2);
+
+	f.get();
+}
+
+TEST(RangeLock, ReadWriteRead)
+{
+	RangeLock<int> locker;
+	int step = 0;
+
+	auto f1 = async([&locker, &step]() {
+		step = 1;
+		auto handler = locker.lock(0, 10, false);
+		sleep(3);
+		EXPECT_EQ(3, step);
+		step = 4;
+		locker.unlock(handler);
+	});
+
+	auto f2 = async([&locker, &step]() {
+		sleep(1);
+		step = 2;
+		auto handler = locker.lock(0, 10);
+		// above line should be blocked until f1 release its lock
+		EXPECT_EQ(4, step);
+		step = 5;
+		sleep(3);
+		step = 6;
+		locker.unlock(handler);
+	});
+
+	sleep(2);
+	EXPECT_EQ(2, step);
+	step= 3;
+	auto h2 = locker.lock(5, 15, false);
+	// Write locker should not be starved, so we arrive here only after f2 unlock
+	EXPECT_EQ(6, step);
+	locker.unlock(h2);
+
+	f1.get();
+	f2.get();
+}
 
 int main(int argc, char *argv[])
 {

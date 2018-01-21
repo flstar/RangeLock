@@ -5,34 +5,47 @@
 #include <queue>
 #include <mutex>
 
+
 template <typename T>
 class RangeLock
 {
 public:
-	template <typename T2>
 	class Lock
 	{
-		friend class RangeLock<T2>;
+		friend class RangeLock;
 	public:
-		Lock(const T2 &start, const T2 &end)
+		Lock(const T &start, const T &end, bool wlocked = true)
 		{
 			start_ = start;
 			end_ = end;
+			wlocked_ = wlocked;
 		}
 		virtual ~Lock() {}
 	private:
-		T2 start_;
-		T2 end_;
+		T start_;
+		T end_;
+		bool wlocked_;
 		std::condition_variable cv_;
 
-	public:
+	private:
 		/** @brief this lock blocks the parameter lock */
 		bool block(const Lock &lock)
 		{
-			if (lock.end_ < start_ || end_ < lock.start_) return false;
-			else return true;
+			if (!wlocked_ && !lock.wlocked_) {
+				// if both are readonly, they won't block each other
+				return false;
+			}
+			else if (lock.end_ < start_ || end_ < lock.start_) {
+				// if they don't overlap with each other, they won't blocked each other
+				return false;
+			}
+			else {
+				return true;
+			}
 		}
+
 	};
+	typedef std::shared_ptr<Lock> LockHandler;
 
 public:
 	RangeLock() {}
@@ -41,16 +54,15 @@ public:
 	RangeLock(const & RangeLock) = delete;
 	RangeLock & operator = (const RangeLock &) = delete;
 
-	typedef std::shared_ptr<Lock<T>> LockHandler;
 private:
 	std::mutex m_;
 	std::deque<LockHandler> lockedq_;
 	std::deque<LockHandler> waitingq_;
 
 public:
-	LockHandler lock(const T &start, const T &end)
+	LockHandler lock(const T &start, const T &end, bool wlocked = true)
 	{
-		LockHandler handler(new Lock<T>(start, end));
+		LockHandler handler(new Lock(start, end, wlocked));
 		
 		std::unique_lock<std::mutex> guard(m_);
 		waitingq_.push_back	(handler);
@@ -93,3 +105,4 @@ public:
 };
 
 #endif
+
